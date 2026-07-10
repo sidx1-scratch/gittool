@@ -104,18 +104,84 @@ func setupRepo(repoURL string) {
 	}
 }
 
-func saveAndPush(message string) {
-	if message == "" {
-		timestamp := time.Now().Format("2006-01-02 15:04:05")
-		message = fmt.Sprintf("Automatic backup: %s", timestamp)
+func getChangesSummary() string {
+	cmd := exec.Command("git", "status", "--porcelain")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return ""
 	}
 
+	lines := strings.Split(stdout.String(), "\n")
+	var added []string
+	var modified []string
+	var deleted []string
+
+	for _, line := range lines {
+		if len(line) < 4 {
+			continue
+		}
+		status := line[:2]
+		file := strings.TrimSpace(line[2:])
+
+		switch status[0] {
+		case 'A':
+			added = append(added, file)
+		case 'M':
+			modified = append(modified, file)
+		case 'D':
+			deleted = append(deleted, file)
+		case 'R':
+			modified = append(modified, file)
+		case '?':
+			added = append(added, file)
+		}
+	}
+
+	if len(added) == 0 && len(modified) == 0 && len(deleted) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	if len(added) > 0 {
+		sb.WriteString("\nAdded:\n")
+		for _, f := range added {
+			sb.WriteString(fmt.Sprintf("  - %s\n", f))
+		}
+	}
+	if len(modified) > 0 {
+		sb.WriteString("\nModified:\n")
+		for _, f := range modified {
+			sb.WriteString(fmt.Sprintf("  - %s\n", f))
+		}
+	}
+	if len(deleted) > 0 {
+		sb.WriteString("\nDeleted:\n")
+		for _, f := range deleted {
+			sb.WriteString(fmt.Sprintf("  - %s\n", f))
+		}
+	}
+
+	return sb.String()
+}
+
+func saveAndPush(message string) {
 	fmt.Println("Staging all changes...")
 	if !runCommand([]string{"git", "add", "."}) {
 		return
 	}
 
-	fmt.Printf("Saving changes with message: '%s'\n", message)
+	if message == "" {
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		summary := getChangesSummary()
+		if summary != "" {
+			message = fmt.Sprintf("Automatic backup: %s\n%s", timestamp, summary)
+		} else {
+			message = fmt.Sprintf("Automatic backup: %s", timestamp)
+		}
+	}
+
+	fmt.Printf("Saving changes with message:\n%s\n", message)
 	if !runCommand([]string{"git", "commit", "-m", message}) {
 		fmt.Println("Nothing to save or push.")
 		return
