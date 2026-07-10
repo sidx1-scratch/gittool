@@ -1,0 +1,5 @@
+# gittool config (per-project, should not be committed)
+.gittool_config.json
+
+# Build artifact
+gittool
